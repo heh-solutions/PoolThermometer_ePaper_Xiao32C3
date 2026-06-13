@@ -15,7 +15,7 @@ static const float ADC_REF_VOLTAGE = 2.5f;           // ESP32-C3 ADC max bei 11d
 static const int   ADC_RESOLUTION = 4095;
 
 // Feature-Flags
-static const bool BATTERY_HW_PRESENT = true;   // Phase 1: Spannungsteiler bestückt
+static const bool BATTERY_HW_PRESENT = false;  // DEAKTIVIERT: GPIO7 hat keinen ADC!
 static const bool BATTERY_MOSFET_CTRL = false;  // Phase 2: P-MOSFET Enable (GPIO9)
 
 void battery_init() {

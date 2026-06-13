@@ -16,9 +16,9 @@
 #define MQTT_CLIENT         "PoolThermometer"
 
 // ---- MQTT-Topics ----
-// Abonnieren (retained, vom ioBroker)
-#define TOPIC_VL_TEMP       "pool/heizung/vorlauf/state"
-#define TOPIC_RL_TEMP       "pool/heizung/ruecklauf/state"
+// Abonnieren (vom ioBroker mqtt.0.PoolLCD.*)
+#define TOPIC_VL_TEMP       "PoolLCD/VLTemp"
+#define TOPIC_RL_TEMP       "PoolLCD/RLTemp"
 // Publizieren
 #define TOPIC_POOL_TEMP     "pool/thermometer/pooltemperatur/state"
 #define TOPIC_BATTERY       "pool/thermometer/battery/state"

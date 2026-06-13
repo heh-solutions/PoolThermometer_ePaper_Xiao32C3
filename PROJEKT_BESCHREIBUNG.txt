@@ -1,7 +1,7 @@
 ================================================================================
 PROJEKT_BESCHREIBUNG – Pool-Thermometer ePaper XIAO ESP32-C3
 ================================================================================
-Letzte Aktualisierung: 13.06.2026
+Letzte Aktualisierung: 13.06.2026 (Session 3)
 Diese Datei dient als Gesamtkontext für zukünftige Copilot-Chat-Sessions.
 Sie wird bei Projektfortschritt erweitert.
 
@@ -24,7 +24,8 @@ Batteriebetriebenes Pool-Thermometer mit:
 - DS18B20 Sensor zur Messung der Pooltemperatur
 - MQTT zur Kommunikation mit ioBroker (Vorlauf/Rücklauf empfangen, Pool senden)
 - KNXnet/IP zur Übertragung der Pooltemperatur auf den KNX-Bus (über WLAN)
-- Deep Sleep (5 Min) für Batteriebetrieb
+- Zwei Betriebsmodi: Dauerbetrieb (Entwicklung) + Deep Sleep (Batteriebetrieb)
+- Webserver für OTA-Updates, Live-Werte, Konfiguration
 - PlatformIO + Arduino Framework
 
 ================================================================================
@@ -36,18 +37,55 @@ Display:    WeAct Studio 1.54" ePaper, 200x200, SPI
 Sensor:     DS18B20 mit 4.7k Pullup nach 3.3V
 
 Batteriemessung (2 Phasen):
-  Phase 1 (aktuell): Spannungsteiler 2x 1MΩ
-    BAT+ → 1MΩ → GPIO7 (ADC) → 1MΩ → GND
+  ACHTUNG: GPIO7 hat KEINEN ADC am ESP32-C3! ADC nur auf GPIO0-5.
+  → Batteriemessung aktuell DEAKTIVIERT.
+  → Neuverkabelung nötig: Batterie-ADC auf GPIO3 (D1/A1),
+    ePaper CS von GPIO3 auf GPIO7 (D5) verschieben.
+  Phase 1 (nach Umverdrahtung): Spannungsteiler 2x 1MΩ
+    BAT+ → 1MΩ → GPIO3 (ADC1_CH3) → 1MΩ → GND
     Dauerverlust: ~2µA (akzeptabel)
   Phase 2 (später, MOSFET bestellen): P-MOSFET Si2301 (SOT-23)
     GPIO9 steuert Gate → Teiler nur bei Messung aktiv → 0µA im Deep Sleep
-    BAT+ → Si2301(S) → Si2301(D) → 1MΩ → GPIO7 → 1MΩ → GND
-              ↑ Gate = GPIO9 (HIGH=aus, LOW=ein)
 
 Pin-Belegung:
-  ePaper:   BUSY=GPIO6, RES=GPIO5, DC=GPIO4, CS=GPIO3, SCK=GPIO8, MOSI=GPIO10
+  ePaper:   BUSY=GPIO6, RES=GPIO5, DC=GPIO4, CS=GPIO3*, SCK=GPIO8, MOSI=GPIO10
   DS18B20:  DATA=GPIO2
-  Batterie: ADC=GPIO7, Enable=GPIO9 (Phase 2)
+  Batterie: ADC=GPIO3* (nach Umverdrahtung), Enable=GPIO9 (Phase 2)
+  * Tausch geplant: ePaper CS → GPIO7, Batterie ADC → GPIO3
+
+XIAO ESP32-C3 Pinout (Ansicht von VORNE/Komponentenseite, USB-C oben):
+
+                    ┌──[USB-C]──┐
+     DS18B20  D0/A0 │ GPIO2    5V    │
+    eP: CS    D1/A1 │ GPIO3   GND    │
+    eP: D/C   D2/A2 │ GPIO4   3V3    │
+    eP: RES   D3/A3 │ GPIO5  GPIO10  │ D10/MOSI  eP: SDA
+    eP: BUSY  D4/SDA│ GPIO6  GPIO9   │ D9/MISO   (MOSFET Phase2)
+    Batt ADC  D5/SCL│ GPIO7  GPIO8   │ D8/SCK    eP: SCL
+      (frei)  D6/TX │ GPIO21 GPIO20  │ D7/RX     (frei)
+                    └───────────────┘
+                     Unterseite: BAT+, BAT-
+
+  Hinweis: GPIO2, GPIO8, GPIO9 = Strapping Pins (Boot-Modus!)
+           GPIO9 = BOOT-Taster auf dem Board
+
+Verkabelung:
+  ePaper (WeAct 1.54", 8-Pin Header, Pin 1=rechts → Pin 8=links):
+    Pin 1: BUSY  → D4 / GPIO6  (XIAO links, 5. v.o.)
+    Pin 2: RES   → D3 / GPIO5  (XIAO links, 4. v.o.)
+    Pin 3: D/C   → D2 / GPIO4  (XIAO links, 3. v.o.)
+    Pin 4: CS    → D1 / GPIO3  (XIAO links, 2. v.o.)
+    Pin 5: SCL   → D8 / GPIO8  (XIAO rechts, 6. v.o.)
+    Pin 6: SDA   → D10/ GPIO10 (XIAO rechts, 4. v.o.)
+    Pin 7: GND   → GND         (XIAO rechts, 2. v.o.)
+    Pin 8: VCC   → 3V3         (XIAO rechts, 3. v.o.)
+  DS18B20:
+    VCC (rot)     → 3V3
+    GND (schwarz) → GND
+    DATA (gelb)   → D0 / GPIO2 (links, 1. v.o.)
+    4.7kΩ Pullup zwischen DATA und 3V3!
+  Batteriemessung:
+    BAT+ → 1MΩ → D5/GPIO7 (links, 6. v.o.) → 1MΩ → GND
 
 ================================================================================
 3. SOFTWARE-ARCHITEKTUR
@@ -57,30 +95,50 @@ Framework: Arduino (PlatformIO)
 Libraries: GxEPD2, OneWire, DallasTemperature, PubSubClient, ArduinoJson
 
 Modulstruktur:
-  main.cpp              – Setup/Deep-Sleep-Ablauf, loop() bleibt leer
+  main.cpp              – Dual-Mode: Dauerbetrieb (loop) oder Deep Sleep
   pins.h                – Pin-Definitionen
-  config.h              – WLAN/MQTT Zugangsdaten (NICHT im Git)
-  config.example.h      – Vorlage für config.h (im Git)
   secrets.h             – Sensible Daten (NICHT im Git)
   secrets.h.example     – Vorlage für secrets.h (im Git)
   parameter.h           – KNX-Adressen, Hardware-Parameter (NICHT im Git)
   parameter.h.example   – Vorlage (im Git)
   display_view.cpp/.h   – ePaper Darstellung
   temperature.cpp/.h    – DS18B20 Messung
-  mqtt_client.cpp/.h    – MQTT Verbindung & Topics
+  mqtt_client.cpp/.h    – MQTT Verbindung & Topics (mit Auto-Reconnect)
   battery.cpp/.h        – Batteriespannung messen
-  knx_client.cpp/.h     – KNXnet/IP Kommunikation
+  knx_client.cpp/.h     – KNXnet/IP Multicast Routing
 
-Ablauf pro Wakeup:
-  1. WLAN verbinden
-  2. MQTT verbinden
-  3. Retained Messages empfangen (Vorlauf, Rücklauf)
-  4. DS18B20 messen (Pooltemperatur)
-  5. Batteriespannung messen
-  6. Pooltemperatur + Batterie per MQTT publizieren
-  7. Pooltemperatur per KNXnet/IP senden
-  8. ePaper aktualisieren (Pool, Vorlauf, Rücklauf, Akku)
-  9. Deep Sleep 5 Minuten
+Betriebsmodus A – Dauerbetrieb (deepSleepEnabled = false):
+  - WLAN + MQTT dauerhaft verbunden
+  - Temperatur + MQTT/KNX Senden: alle 60 Sekunden
+  - ePaper-Update: alle 5 Minuten
+  - MQTT client.loop(): alle 100ms (empfängt VL/RL live)
+  - Webserver auf Port 80:
+    /         – Live-Werte, Status, RSSI, Uptime, Deep-Sleep-Status
+    /measure  – Sofort messen + senden
+    /display  – Display sofort aktualisieren
+    /sleep    – Sofort in Deep Sleep gehen
+    /deepsleep?enable=0|1 – Deep Sleep ein/ausschalten
+    /setsleep?min=N       – Sleep-Dauer einstellen (1-60 Min)
+    /ota      – Firmware-Upload per Browser (.bin)
+  - WLAN Auto-Reconnect bei Verbindungsverlust
+
+Betriebsmodus B – Deep Sleep (deepSleepEnabled = true):
+  Boot-Ablauf:
+    1. DS18B20 + Batterie messen
+    2. Bei erstem Boot (Power-On): Display sofort mit Pool-Temp (ohne VL/RL)
+       Bei Wakeup: Kein frühes Display-Update (nur 1 Refresh!)
+    3. WLAN verbinden
+    4. MQTT verbinden + auf VL/RL warten (max 20s)
+    5. Display mit allen Werten aktualisieren (einziger Refresh bei Wakeup)
+    6. MQTT + KNX publizieren
+    7. Webserver starten (Boot Grace Period)
+    8. Nach Grace Period (3 Min): Deep Sleep
+  Boot Grace Period: 180 Sekunden
+    - Nach jedem Boot läuft Webserver 3 Min lang
+    - Ermöglicht Deep Sleep per Web auszuschalten
+    - Countdown in Web-Oberfläche sichtbar
+  Sleep-Dauer: Einstellbar per Web (1-60 Min, Default aus parameter.h)
+  Wakeup-Erkennung: esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER
 
 ================================================================================
 4. MQTT-INFRASTRUKTUR (ioBroker)
@@ -99,21 +157,28 @@ ioBroker:
   Zugriff aus BMW-Netz: Proxy http://proxy.muc:8080 nötig (nur curl.exe!)
 
 MQTT-Topics:
-  Abonnieren (retained):
-    pool/heizung/vorlauf/state      – Vorlauftemperatur
-    pool/heizung/ruecklauf/state    – Rücklauftemperatur
+  Abonnieren (retained, vom ioBroker-Script gepusht):
+    PoolLCD/VLTemp               – Pool-Vorlauftemperatur (°C)
+    PoolLCD/RLTemp               – Pool-Rücklauftemperatur (°C)
   Publizieren:
     pool/thermometer/pooltemperatur/state
     pool/thermometer/battery/state
+    pool/thermometer/status       – online/sleeping/offline (LWT)
 
-ioBroker-Skript "PoolOled_Push.js":
+ioBroker-Script "PoolLCD_MQTT_Push.js" (NEU, ersetzt alte Logik):
   - Läuft im JavaScript-Adapter (system.adapter.javascript.0)
   - Schedule: alle 15 Sekunden
-  - Liest aus ioBroker-Objekten:
-      mqtt.0.PoolLCD.VLTemp   (Vorlauf)
-      mqtt.0.PoolLCD.RLTemp   (Rücklauf)
+  - Liest KNX-Werte aus ioBroker:
+      openknx.0.Heizung.Ist-Temperaturen.Pool_IST_Temp_VL
+      openknx.0.Heizung.Ist-Temperaturen.Pool_IST_Temp_RL
+  - KNX-Werte kommen als DPT9-kodierter Hex-String (z.B. "1931" = 24.4°C)
+  - Script dekodiert DPT9 und publiziert als Float auf MQTT
+  - Schreibt per setState in mqtt.0.PoolLCD.VLTemp / mqtt.0.PoolLCD.RLTemp
+  - MQTT-Adapter publiziert diese dann automatisch an Broker
+
+ioBroker-Skript "PoolOled_Push.js" (alt, weiterhin aktiv):
+  - Liest mqtt.0.PoolLCD.VLTemp/RLTemp
   - Pusht Werte auf Sonoff/Tasmota OLED-Displays per DisplayText-Befehl
-  - Das Pool-Thermometer fügt sich in diese bestehende Infrastruktur ein
 
 ================================================================================
 5. KNX-ANBINDUNG
@@ -275,11 +340,22 @@ Verwandte Projekte im gleichen Workspace-Ordner:
 - [x] KNX-IP-Gateway: 192.168.178.6:3671 (phys. 1.1.1)
 - [x] Physische KNX-Adresse Pool-Thermometer: 1.1.165
 - [x] KNX-GA Pooltemperatur: 10/3/62
-- [x] Batteriestatus auf KNX: Ja (10/3/63, ohne zusätzliche Hardware, per ADC)
+- [x] Batteriestatus auf KNX: Ja (12/5/6, ohne zusätzliche Hardware, per ADC)
+- [x] KNXnet/IP Library evaluieren → eigene Impl. (esp-knx-ip zu alt)
+- [x] PlatformIO-Projekt aufsetzen → kompiliert + geflasht
+- [x] Dauerbetrieb mit Loop-Intervallen implementiert
+- [x] Webserver + OTA implementiert
+- [x] MQTT-Topics korrigiert (PoolLCD/VLTemp, PoolLCD/RLTemp)
+- [x] ioBroker-Script zum Pushen der KNX-Werte auf MQTT (PoolLCD_MQTT_Push.js)
+- [x] DS18B20 Sensor erkannt und misst korrekt (GPIO2)
+- [x] Display-Layout redesigned (große Temps, Batterie-Balken, 90° Rotation)
+- [x] Deep Sleep mit Boot Grace Period (3 Min) + Web-Konfiguration
+- [x] Single-Refresh bei Deep Sleep Wakeup (kein doppeltes Display-Update)
 - [ ] MQTT-Broker Zugangsdaten (User/Passwort) → User trägt in secrets.h ein
-- [ ] KNXnet/IP Library evaluieren (esp-knx-ip vs. manuell)
-- [ ] PlatformIO-Projekt aufsetzen
 - [ ] Gehäuse / Wasserschutz klären
+- [ ] Batterie MOSFET (Phase 2) implementieren wenn Si2301 vorhanden
+- [ ] Batterie-ADC: Umverdrahtung GPIO3↔GPIO7 ausstehend
+- [ ] Deep Sleep Praxistest (Stromverbrauch messen, Wakeup-Zyklus verifizieren)
 
 ================================================================================
 9. FORTSCHRITT / CHANGELOG
@@ -296,3 +372,112 @@ Verwandte Projekte im gleichen Workspace-Ordner:
   - CredentialHelperSelector-Popup gefixt (GIT_CONFIG_NOSYSTEM=1)
   - Anforderungen.txt entfernt (in PROJEKT_BESCHREIBUNG.txt konsolidiert)
   - PROJEKT_BESCHREIBUNG.txt erstellt (diese Datei)
+  - Alle Module implementiert (MQTT, DS18B20, ePaper, KNX Multicast, Batterie)
+  - Build erfolgreich: 60.2% Flash, 13.6% RAM
+  - Firmware geflasht auf XIAO ESP32-C3
+
+13.06.2026 – Session 2:
+  - Deep Sleep deaktiviert → Dauerbetrieb mit millis()-Intervallen
+  - main.cpp komplett umgeschrieben: loop()-basiert statt setup()-only
+  - MQTT dauerhaft verbunden mit Auto-Reconnect (mqtt_loop(), mqtt_is_connected())
+  - Webserver implementiert (Port 80): Live-Werte, OTA, Sofort-Messung, Deep-Sleep-Button
+  - OTA Firmware-Update per Browser (.bin Upload)
+  - Build erfolgreich: 63.3% Flash, 13.8% RAM
+  - PROJEKT_BESCHREIBUNG.txt aktualisiert
+
+  Learnings – Serial/USB am XIAO ESP32-C3:
+    - XIAO ESP32-C3 hat KEINEN externen USB-Serial-Chip!
+    - Nutzt ausschließlich internen USB-CDC/JTAG (ESP32-C3 native USB)
+    - COM-Port im Bootloader-Modus: COM7 (USB-JTAG)
+    - COM-Port im Normal-Betrieb: COM7 (USB-CDC, nur mit ARDUINO_USB_CDC_ON_BOOT=1)
+    - COM3 im System = anderes Gerät, NICHT der XIAO!
+    - platformio.ini braucht:
+        build_flags = -DARDUINO_USB_CDC_ON_BOOT=1
+        monitor_port = COM7
+        upload_port = COM7
+    - delay(3000) am Anfang von setup() nötig, damit USB-CDC-Port vom PC erkannt wird
+      bevor erste Serial-Ausgabe kommt
+    - Bei Reset verschwindet COM7 kurz (USB re-enumeration) → Monitor verliert Verbindung
+    - Bootloader-Modus: BOOT gedrückt halten → RESET drücken → BOOT loslassen
+    - Flash geht nur im Bootloader-Modus (normaler Upload über COM7 schlägt fehl
+      wenn Firmware läuft und USB-CDC belegt ist)
+    - "Hard resetting via RTS pin" nach Flash → XIAO startet automatisch neu
+
+  Learnings – ePaper Display (WeAct 1.54"):
+    - Pin-Bezeichnungen auf PCB: BUSY, RES, D/C, CS, SCL, SDA, GND, VCC
+    - SCL = SPI Clock, SDA = SPI MOSI (NICHT I2C!)
+    - VCC: 3.3–5V laut PCB-Beschriftung
+    - Display zeigt nach Power-On den letzten Inhalt (ePaper-Eigenschaft)
+    - Wenn Display komplett weiß/leer: entweder kein Strom oder noch nie beschrieben
+    - BUSY-Pin deaktiviert (-1 im Konstruktor) → Software-Delays stattdessen
+    - Display war zunächst tot → Ursache: lockere Dupont-Kabel (Kontaktproblem)
+    - GxEPD2_154_D67 ist der richtige Treiber (SSD1681-basiert)
+    - SPI.begin(SCK, -1, MOSI, -1) – CS wird von GxEPD2 per digitalWrite gesteuert
+    - display.init(115200, true, 50, false) – 50ms Reset-Puls
+    - setTextSize(2) mit 24pt Font → effektiv ~48pt (pixelig aber gut lesbar)
+    - setRotation(1) → 90° gedreht (Landscape-Orientierung)
+    - Text wrap: setCursor x-Position darf nicht zu weit rechts sein sonst Umbruch!
+    - drawCircle() als Grad-Symbol (°) da ASCII-Code nicht in GFX-Fonts vorhanden
+
+13.06.2026 – Session 3:
+  MQTT Topics korrigiert & ioBroker-Infrastruktur:
+  - MQTT Wildcard-Debug (#) eingebaut → festgestellt: keine PoolLCD-Topics auf Broker
+  - Ursache: Altes Pool-Thermometer (das VL/RL auf MQTT schrieb) ist offline
+  - Neues ioBroker-Script "PoolLCD_MQTT_Push.js" erstellt:
+    → Liest KNX-States: openknx.0.Heizung.Ist-Temperaturen.Pool_IST_Temp_VL/RL
+    → KNX-Werte sind DPT9-kodiert (Hex-String, z.B. "1931" = 24.4°C)
+    → decodeDPT9() Funktion implementiert (Sign, Exponent, Mantisse)
+    → Publiziert alle 15s auf mqtt.0.PoolLCD.VLTemp / .RLTemp
+  - MQTT-Topics in parameter.h korrigiert: "PoolLCD/VLTemp", "PoolLCD/RLTemp"
+  - Wildcard-Debug entfernt, zurück auf gezielte Subscription
+  - VL/RL Werte werden korrekt empfangen (24.5°C / 29.8°C)
+
+  DS18B20 Temperatursensor:
+  - Sensor erkannt: 1 Sensor auf GPIO2, Adresse 10:63:3A:90:02:08:00:80
+  - Wert korrekt: 24.4°C
+  - Debug-Output mit Geräteanzahl und Adresse in temperature_init() eingebaut
+
+  Display-Redesign:
+  - 90° Rotation (setRotation(1))
+  - Keine Überschrift – nur Temperaturwerte
+  - Pool-Temp maximal groß: FreeSansBold24pt mit setTextSize(2)
+  - VL/RL: FreeSansBold24pt (nebeneinander mit vertikaler Trennlinie)
+  - °C-Einheiten: Pool oben rechts, VL/RL rechtsbündig in Label-Zeile
+  - Grad-Symbol per drawCircle() (Kreis)
+  - "--.–" statt -127 bei fehlenden Werten
+  - Batterie: Grafischer Fortschrittsbalken mit eingebetteter Prozentzahl
+    → Immer sichtbar (zeigt "--%" wenn kein Wert)
+    → Text weiß auf schwarzem Balken wenn >50%, sonst schwarz
+
+  Boot-Sequenz optimiert:
+  - Erster Boot (Power-On): Display sofort mit Pool-Temp, dann nochmal mit VL/RL
+  - Deep Sleep Wakeup: Nur EIN Display-Refresh (wartet auf VL/RL vor Update)
+  - Wakeup-Erkennung: esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER
+
+  Deep Sleep & Web-Konfiguration:
+  - Boot Grace Period: 3 Minuten nach jedem Boot kein Deep Sleep
+  - Webserver läuft IMMER (auch bei deepSleepEnabled=true während Grace Period)
+  - Deep Sleep per Web ein/ausschaltbar (/deepsleep?enable=0|1)
+  - Sleep-Dauer per Web einstellbar (/setsleep?min=N, 1-60 Min)
+  - Grace Period Countdown in Web-Oberfläche sichtbar
+
+  Learnings – MQTT & ioBroker:
+    - ioBroker MQTT-Adapter (mqtt.0) im Server-Modus:
+      → Topics werden als States unter mqtt.0.<topic> angelegt
+      → setState('mqtt.0.PoolLCD.VLTemp', wert, true) publiziert auf "PoolLCD/VLTemp"
+    - KNX-Werte im openknx-Adapter sind manchmal als DPT9-Hex-String gespeichert
+      (DPT14.068 als type konfiguriert, aber Wert = Hex-String!)
+    - DPT9 Dekodierung: Sign(1bit) + Exponent(4bit) + Mantisse(11bit)
+      → Formel: 0.01 * mantisse * 2^exponent (mantisse im Zweierkomplement)
+    - ioBroker REST API (Port 8087) gibt Werte als String zurück (z.B. "1931")
+      → getPlainValue liefert den .val als quoted String
+    - Retained Messages: Alter Wert bleibt auf Broker bis überschrieben!
+      → "null" als retained RL war vom alten Script (setState mit null)
+
+  Learnings – ESP32-C3 Deep Sleep:
+    - esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER → Wakeup aus Deep Sleep
+    - Alle anderen Ursachen (inkl. 0 = Power-On) → erster Boot
+    - #include <esp_sleep.h> nötig für esp_sleep_get_wakeup_cause()
+    - RTC-Speicher (RTC_DATA_ATTR) überlebt Deep Sleep (hier nicht benötigt)
+    - goto mit lokalen Variablen: C++ verbietet goto über Variablen-Initialisierung
+      → Lösung: Block-Scope {} oder Variable vor goto deklarieren

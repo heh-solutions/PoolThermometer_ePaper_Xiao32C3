@@ -37,19 +37,20 @@ static bool vlReceived = false;
 static bool rlReceived = false;
 
 static void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-    char msg[32];
+    char msg[64];
     unsigned int copyLen = (length < sizeof(msg) - 1) ? length : sizeof(msg) - 1;
     memcpy(msg, payload, copyLen);
     msg[copyLen] = '\0';
 
+    // DEBUG: Alle empfangenen Topics ausgeben
+    Serial.printf("MQTT RX: [%s] = '%s'\n", topic, msg);
+
     if (strcmp(topic, TOPIC_VL_TEMP) == 0) {
         vlTemp = atof(msg);
         vlReceived = true;
-        Serial.printf("MQTT VL: %s\n", msg);
     } else if (strcmp(topic, TOPIC_RL_TEMP) == 0) {
         rlTemp = atof(msg);
         rlReceived = true;
-        Serial.printf("MQTT RL: %s\n", msg);
     }
 }
 
@@ -80,7 +81,7 @@ bool mqtt_connect() {
 void mqtt_subscribe() {
     mqttClient.subscribe(TOPIC_VL_TEMP);
     mqttClient.subscribe(TOPIC_RL_TEMP);
-    Serial.println("MQTT: Topics abonniert");
+    Serial.printf("MQTT: Abonniert: '%s', '%s'\n", TOPIC_VL_TEMP, TOPIC_RL_TEMP);
 }
 
 bool mqtt_wait_for_retained(unsigned long timeout_ms) {
@@ -112,4 +113,19 @@ float mqtt_get_rl_temp() { return rlTemp; }
 void mqtt_disconnect() {
     mqttClient.publish(TOPIC_STATUS, "sleeping", true);
     mqttClient.disconnect();
+}
+
+void mqtt_loop() {
+    if (mqttClient.connected()) {
+        mqttClient.loop();
+    } else {
+        // Auto-Reconnect
+        if (mqtt_connect()) {
+            mqtt_subscribe();
+        }
+    }
+}
+
+bool mqtt_is_connected() {
+    return mqttClient.connected();
 }
