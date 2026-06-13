@@ -1,0 +1,89 @@
+Erstelle ein PlatformIO-Projekt für einen Seeed Studio XIAO ESP32-C3.
+
+Ziel:
+Ein batteriebetriebenes Pool-Thermometer mit 1.54 Zoll ePaper Display 200x200 über SPI, einem DS18B20 Temperatursensor und MQTT.
+
+Hardware:
+- Board: seeed_xiao_esp32c3
+- Display: WeAct Studio 1.54 inch ePaper, 200x200, SPI
+- Display Pins:
+  BUSY = GPIO6
+  RES  = GPIO5
+  DC   = GPIO4
+  CS   = GPIO3
+  SCK  = GPIO8
+  MOSI = GPIO10
+- DS18B20 DATA = GPIO2 mit 4.7k Pullup nach 3.3V
+
+Software:
+- Arduino Framework
+- Libraries: GxEPD2, OneWire, DallasTemperature, PubSubClient, ArduinoJson
+- WLAN verbinden
+- MQTT verbinden
+- Topics abonnieren:
+  pool/heizung/vorlauf/state
+  pool/heizung/ruecklauf/state
+- Werte sollen als retained MQTT messages erwartet werden
+- DS18B20 messen
+- Pooltemperatur publizieren auf:
+  pool/thermometer/pooltemperatur/state
+- Batteriewert publizieren auf:
+  pool/thermometer/battery/state
+- ePaper aktualisieren mit Pool, Vorlauf, Rücklauf, Akku
+- Danach ESP32-C3 für 5 Minuten in Deep Sleep schicken
+- loop() bleibt leer
+
+Bitte Code modular aufbauen:
+- main.cpp
+- pins.h
+- config.h
+- display_view.cpp/.h
+- temperature.cpp/.h
+- mqtt_client.cpp/.h
+- battery.cpp/.h
+
+config.h soll WLAN und MQTT Zugangsdaten enthalten, aber config.example.h soll ins Git.
+
+---
+
+Zusätzliche Anforderungen (MQTT-Infrastruktur, ioBroker, KNX):
+
+MQTT-Broker / ioBroker-Umgebung:
+- MQTT-Broker läuft auf 192.168.178.6, Port 18833
+- ioBroker läuft auf snappyxxl.noip.me (Admin-Port 8081)
+- ioBroker-Skript "PoolOled_Push.js" liest alle 15 Sekunden:
+    mqtt.0.PoolLCD.VLTemp  (Vorlauf-Temperatur)
+    mqtt.0.PoolLCD.RLTemp  (Rücklauf-Temperatur)
+  und pusht diese Werte auf diverse OLED-Displays (Sonoff/Tasmota-Geräte)
+- Das Pool-Thermometer soll sich in diese bestehende MQTT-Infrastruktur einfügen
+- Vorlauf/Rücklauf-Temperaturen werden vom ioBroker per MQTT als retained Messages bereitgestellt
+
+KNX-Anbindung (über IP, NICHT physisch auf den Bus):
+- Die Pooltemperatur soll zusätzlich auf den KNX-Bus gesendet werden
+- Kommunikation über KNXnet/IP (UDP Multicast oder Tunneling) an ein vorhandenes KNX-IP-Gateway
+- KEIN UART-Busankoppler – der ESP32-C3 sendet per WLAN über das Netzwerk
+- Temperaturwerte als DPT 9.001 (2-Byte Float)
+- Library-Optionen für ESP32:
+    → esp-knx-ip (https://github.com/envy/esp-knx-ip)
+    → oder manuelle KNXnet/IP UDP-Pakete
+- Referenz: KNX-Sauna-Modul-Projekt nutzt KnxTpUart (UART), hier jedoch IP-basiert
+- Physische Adresse und Gruppenadresse für Pooltemperatur müssen noch festgelegt werden
+  (Bestehende KNX-GAs liegen im Bereich 10/3/xx für Temperatursensoren)
+- Zusätzliches Modul nötig: knx_client.cpp/.h
+
+Projekt-Konventionen (aus bestehenden Projekten übernommen):
+- secrets.h / secrets.h.example Pattern mit __has_include Guard
+- parameter.h / parameter.h.example Pattern mit __has_include Guard
+- .gitignore: .pio, .vscode, secrets.h, parameter.h
+- MQTT-Zugangsdaten (Broker-IP, Port, User, Passwort) gehören in secrets.h
+- KNX-Adressen und Hardware-Pins gehören in parameter.h
+- Modularer Codeaufbau (wie oben bereits definiert)
+
+Offene Punkte / Klärungsbedarf:
+- [x] KNX-Anbindung: GEKLÄRT → KNXnet/IP über WLAN (kein UART-Busankoppler)
+- [ ] IP-Adresse / Hostname des KNX-IP-Gateways klären
+- [ ] Physische KNX-Adresse für das Pool-Thermometer festlegen
+- [ ] KNX-Gruppenadresse für Pooltemperatur festlegen (Vorschlag: 10/3/46)
+- [ ] Soll auch der Batteriestatus auf KNX gesendet werden?
+- [ ] MQTT-Broker Zugangsdaten (User/Passwort) klären
+- [ ] KNXnet/IP Library evaluieren (esp-knx-ip vs. manuell)
