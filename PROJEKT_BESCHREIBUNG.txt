@@ -1,0 +1,241 @@
+================================================================================
+PROJEKT_BESCHREIBUNG – Pool-Thermometer ePaper XIAO ESP32-C3
+================================================================================
+Letzte Aktualisierung: 13.06.2026
+Diese Datei dient als Gesamtkontext für zukünftige Copilot-Chat-Sessions.
+Sie wird bei Projektfortschritt erweitert.
+
+================================================================================
+1. PROJEKTZIEL
+================================================================================
+
+Batteriebetriebenes Pool-Thermometer mit:
+- 1.54" ePaper Display (200x200, WeAct Studio) zur Anzeige von Temperaturen
+- DS18B20 Sensor zur Messung der Pooltemperatur
+- MQTT zur Kommunikation mit ioBroker (Vorlauf/Rücklauf empfangen, Pool senden)
+- KNXnet/IP zur Übertragung der Pooltemperatur auf den KNX-Bus (über WLAN)
+- Deep Sleep (5 Min) für Batteriebetrieb
+- PlatformIO + Arduino Framework
+
+================================================================================
+2. HARDWARE
+================================================================================
+
+Board:      Seeed Studio XIAO ESP32-C3
+Display:    WeAct Studio 1.54" ePaper, 200x200, SPI
+Sensor:     DS18B20 mit 4.7k Pullup nach 3.3V
+
+Pin-Belegung:
+  ePaper:  BUSY=GPIO6, RES=GPIO5, DC=GPIO4, CS=GPIO3, SCK=GPIO8, MOSI=GPIO10
+  DS18B20: DATA=GPIO2
+
+================================================================================
+3. SOFTWARE-ARCHITEKTUR
+================================================================================
+
+Framework: Arduino (PlatformIO)
+Libraries: GxEPD2, OneWire, DallasTemperature, PubSubClient, ArduinoJson
+
+Modulstruktur:
+  main.cpp              – Setup/Deep-Sleep-Ablauf, loop() bleibt leer
+  pins.h                – Pin-Definitionen
+  config.h              – WLAN/MQTT Zugangsdaten (NICHT im Git)
+  config.example.h      – Vorlage für config.h (im Git)
+  secrets.h             – Sensible Daten (NICHT im Git)
+  secrets.h.example     – Vorlage für secrets.h (im Git)
+  parameter.h           – KNX-Adressen, Hardware-Parameter (NICHT im Git)
+  parameter.h.example   – Vorlage (im Git)
+  display_view.cpp/.h   – ePaper Darstellung
+  temperature.cpp/.h    – DS18B20 Messung
+  mqtt_client.cpp/.h    – MQTT Verbindung & Topics
+  battery.cpp/.h        – Batteriespannung messen
+  knx_client.cpp/.h     – KNXnet/IP Kommunikation
+
+Ablauf pro Wakeup:
+  1. WLAN verbinden
+  2. MQTT verbinden
+  3. Retained Messages empfangen (Vorlauf, Rücklauf)
+  4. DS18B20 messen (Pooltemperatur)
+  5. Batteriespannung messen
+  6. Pooltemperatur + Batterie per MQTT publizieren
+  7. Pooltemperatur per KNXnet/IP senden
+  8. ePaper aktualisieren (Pool, Vorlauf, Rücklauf, Akku)
+  9. Deep Sleep 5 Minuten
+
+================================================================================
+4. MQTT-INFRASTRUKTUR (ioBroker)
+================================================================================
+
+MQTT-Broker:
+  IP:   192.168.178.6
+  Port: 18833
+  Auth: User/Passwort → noch zu klären, kommen in secrets.h
+
+ioBroker:
+  Host:       snappyxxl.noip.me
+  Admin-Port: 8081 (HTTPS)
+  REST-API:   Port 8087 (standardmäßig im Router geschlossen!)
+  User:       admin
+  Zugriff aus BMW-Netz: Proxy http://proxy.muc:8080 nötig (nur curl.exe!)
+
+MQTT-Topics:
+  Abonnieren (retained):
+    pool/heizung/vorlauf/state      – Vorlauftemperatur
+    pool/heizung/ruecklauf/state    – Rücklauftemperatur
+  Publizieren:
+    pool/thermometer/pooltemperatur/state
+    pool/thermometer/battery/state
+
+ioBroker-Skript "PoolOled_Push.js":
+  - Läuft im JavaScript-Adapter (system.adapter.javascript.0)
+  - Schedule: alle 15 Sekunden
+  - Liest aus ioBroker-Objekten:
+      mqtt.0.PoolLCD.VLTemp   (Vorlauf)
+      mqtt.0.PoolLCD.RLTemp   (Rücklauf)
+  - Pusht Werte auf Sonoff/Tasmota OLED-Displays per DisplayText-Befehl
+  - Das Pool-Thermometer fügt sich in diese bestehende Infrastruktur ein
+
+================================================================================
+5. KNX-ANBINDUNG
+================================================================================
+
+Methode:  KNXnet/IP über WLAN (KEIN physischer UART-Busankoppler!)
+Protokoll: UDP Multicast oder Tunneling
+Datentyp:  DPT 9.001 (2-Byte Float für Temperatur)
+
+Library-Optionen:
+  - esp-knx-ip (https://github.com/envy/esp-knx-ip)
+  - Manuelle KNXnet/IP UDP-Pakete
+
+Referenz-Projekt: KNX-Sauna-Modul (ProMicro)
+  - Nutzt KnxTpUart über UART (Serial1, 19200 Baud, 8E1)
+  - Physische Adresse: 1.1.160
+  - Temperatur-GAs im Bereich 10/3/xx
+  - Hier NICHT anwendbar (anderer Ansatz: IP statt UART)
+
+Offene KNX-Punkte:
+  - [ ] IP-Adresse des KNX-IP-Gateways
+  - [ ] Physische KNX-Adresse für Pool-Thermometer
+  - [ ] Gruppenadresse für Pooltemperatur (Vorschlag: 10/3/46)
+  - [ ] Batteriestatus auch auf KNX?
+  - [ ] Library-Evaluierung (esp-knx-ip vs. manuell)
+
+================================================================================
+6. PROJEKT-KONVENTIONEN
+================================================================================
+
+Aus bestehenden Projekten (E3DC-Display, SaunaFensterDisplay) übernommen:
+
+Dateischutz:
+  - secrets.h, parameter.h, config.h → in .gitignore, NIE committen
+  - .example-Dateien als Vorlagen ins Git
+  - __has_include Guard im Code:
+      #if __has_include("secrets.h")
+        #include "secrets.h"
+      #else
+        #warning "secrets.h nicht gefunden..."
+      #endif
+  - Damit __has_include funktioniert: build_flags = -I src in platformio.ini
+
+.gitignore muss enthalten:
+  .pio
+  .vscode/.browse.c_cpp.db*
+  .vscode/c_cpp_properties.json
+  .vscode/launch.json
+  .vscode/ipch
+  src/secrets.h
+  src/parameter.h
+  src/config.h
+
+Bekannte Zugangsdaten (aus secrets.h anderer Projekte):
+  WLAN SSID:  HHWLAN
+  WLAN PSK:   passwordcode7004
+  MQTT Broker: 192.168.178.6:18833
+
+================================================================================
+7. ENTWICKLUNGSUMGEBUNG & LEARNINGS
+================================================================================
+
+Workspace:
+  C:\Users\Q180292\OneDrive - BMW Group\Holger Hagen\VSCode_HH\PoolThermometer_ePaper_Xiao32C3
+
+GitHub:
+  Repo:  https://github.com/heh-solutions/PoolThermometer_ePaper_Xiao32C3
+  User:  heh-solutions (Holgi)
+  Email: 274011106+heh-solutions@users.noreply.github.com
+
+Git Push im BMW-Netzwerk:
+  PROBLEM: git push im Terminal hängt – sowohl mit als auch ohne Proxy.
+  LÖSUNG:  VS Code eingebauter Git-Client funktioniert!
+           → Source Control Sidebar oder Ctrl+Shift+P → "Git: Push"
+           → VS Code nutzt intern einen eigenen HTTP-Client der den Proxy handelt
+  NICHT funktioniert:
+    - git push direkt im Terminal (hängt endlos)
+    - git push mit http.proxy = http://proxy.muc:8080 (hängt auch)
+    - git push ohne Proxy (kann github.com:443 nicht erreichen)
+    - gh CLI (Installation durch Firmenrichtlinie blockiert, winget Exit 1602)
+
+GitHub-Repo per API erstellen (wenn gh CLI nicht verfügbar):
+  1. Token aus Git Credential Manager extrahieren:
+       $process = New-Object System.Diagnostics.Process
+       $process.StartInfo.FileName = "git"
+       $process.StartInfo.Arguments = "credential fill"
+       $process.StartInfo.UseShellExecute = $false
+       $process.StartInfo.RedirectStandardInput = $true
+       $process.StartInfo.RedirectStandardOutput = $true
+       $process.StartInfo.RedirectStandardError = $true
+       $process.Start() | Out-Null
+       $process.StandardInput.WriteLine("protocol=https")
+       $process.StandardInput.WriteLine("host=github.com")
+       $process.StandardInput.WriteLine("")
+       $process.StandardInput.Close()
+       $output = $process.StandardOutput.ReadToEnd()
+       $process.WaitForExit()
+       $token = ($output -split "`n" | ? { $_ -match "^password=" }) -replace "^password=","" | % { $_.Trim() }
+  2. Repo über GitHub API erstellen (PowerShell, mit BMW-Proxy):
+       $body = '{"name":"RepoName","description":"...","private":false}'
+       $headers = @{ Authorization = "token $token"; Accept = "application/vnd.github.v3+json" }
+       Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headers -Body $body -Proxy "http://proxy.muc:8080"
+  3. Remote setzen + Push über VS Code:
+       git remote add origin https://github.com/heh-solutions/RepoName.git
+       → Dann VS Code "Git: Push" nutzen (NICHT Terminal!)
+
+ioBroker Zugriff aus BMW-Netz:
+  - Admin UI: https://snappyxxl.noip.me:8081 (via Proxy erreichbar)
+  - REST API Port 8087: Im Router standardmäßig GESCHLOSSEN
+    → Vor Nutzung: Port 8087 im Router freigeben + ioBroker Instanz starten
+  - curl.exe mit Proxy: curl.exe -k -s --proxy "http://proxy.muc:8080" "https://snappyxxl.noip.me:8087/..."
+  - PowerShell Invoke-RestMethod funktioniert NICHT (TLS-Problem mit PS 5.1)
+
+Verwandte Projekte im gleichen Workspace-Ordner:
+  IOBroker_HH/                    – ioBroker Skripte (PoolOled_Push.js, Energiefluss)
+  KNX-Sauna-Modul_Reg4TE_ProMicro/ – KNX UART-Projekt (Referenz für GA-Schema)
+  SaunaFensterDisplay_ESP8266_D1mini/ – MQTT + TFT Display (Referenz für Codestruktur)
+  E3DC_TFT-Display_ESP8266_D1mini/   – E3DC Energiemonitor (Referenz für Konventionen)
+
+================================================================================
+8. OFFENE PUNKTE
+================================================================================
+
+- [ ] IP-Adresse / Hostname des KNX-IP-Gateways klären
+- [ ] Physische KNX-Adresse für das Pool-Thermometer festlegen
+- [ ] KNX-Gruppenadresse für Pooltemperatur festlegen (Vorschlag: 10/3/46)
+- [ ] Soll auch der Batteriestatus auf KNX gesendet werden?
+- [ ] MQTT-Broker Zugangsdaten (User/Passwort) klären
+- [ ] KNXnet/IP Library evaluieren (esp-knx-ip vs. manuell)
+- [ ] PlatformIO-Projekt aufsetzen
+- [ ] Gehäuse / Wasserschutz klären
+
+================================================================================
+9. FORTSCHRITT / CHANGELOG
+================================================================================
+
+13.06.2026 – Session 1:
+  - Anforderungen gesammelt und in Anforderungen.txt geschrieben
+  - ioBroker-Umgebung analysiert (MQTT-Broker, PoolOled_Push.js Skript)
+  - KNX-Referenzprojekt analysiert (Sauna-Modul, GA-Schema 10/3/xx)
+  - KNX-Anbindung geklärt: KNXnet/IP über WLAN (kein UART)
+  - Projekt-Konventionen aus bestehenden Projekten übernommen
+  - GitHub-Repo erstellt: heh-solutions/PoolThermometer_ePaper_Xiao32C3
+  - Learnings dokumentiert: Proxy, Git Push, GitHub API, ioBroker-Zugriff
+  - PROJEKT_BESCHREIBUNG.txt erstellt (diese Datei)
