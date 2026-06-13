@@ -217,6 +217,14 @@ ioBroker Zugriff aus BMW-Netz:
   - curl.exe mit Proxy: curl.exe -k -s --proxy "http://proxy.muc:8080" "https://snappyxxl.noip.me:8087/..."
   - PowerShell Invoke-RestMethod funktioniert NICHT (TLS-Problem mit PS 5.1)
 
+Git Credential Helper – CredentialHelperSelector-Popup unterbinden:
+  PROBLEM: Bei jedem Push/Pull erscheint ein GUI-Dialog "Select a credential helper"
+  LÖSUNG:  Einmalig global setzen:
+    git config --global credential.helper manager
+    git config --global credential.helperselector.selected manager
+    git config --global credential.guiprompt false
+  Ergebnis: Git nutzt dauerhaft den Windows Credential Manager, kein Popup mehr.
+
 Verwandte Projekte im gleichen Workspace-Ordner:
   IOBroker_HH/                    – ioBroker Skripte (PoolOled_Push.js, Energiefluss)
   KNX-Sauna-Modul_Reg4TE_ProMicro/ – KNX UART-Projekt (Referenz für GA-Schema)
