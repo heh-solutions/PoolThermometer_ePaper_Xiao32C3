@@ -74,7 +74,11 @@ void setup() {
     // 3. Batterie messen
     float battV = battery_read_voltage();
     int battPct = battery_read_percent();
-    Serial.printf("Batterie: %.2fV (%d%%)\n", battV, battPct);
+    if (battV > 0) {
+        Serial.printf("Batterie: %.2fV (%d%%)\n", battV, battPct);
+    } else {
+        Serial.println("Batterie: Messung nicht verfügbar");
+    }
 
     // 4. WLAN verbinden
     if (!wifi_connect(10000)) {
@@ -92,16 +96,21 @@ void setup() {
         if (poolTemp > -126.0f) {
             mqtt_publish_pool_temp(poolTemp);
         }
-        mqtt_publish_battery(battV);
+        if (battV > 0) {
+            mqtt_publish_battery(battV);
+        }
 
         mqtt_disconnect();
     }
 
     // 7. KNXnet/IP senden
+    knx_init();
     if (poolTemp > -126.0f) {
         knx_send_temperature(KNX_GA_POOL_TEMP, poolTemp);
     }
-    knx_send_temperature(KNX_GA_BATTERY, battV);
+    if (battV > 0) {
+        knx_send_temperature(KNX_GA_BATTERY, battV);
+    }
 
     // 8. Display aktualisieren
     display_update(poolTemp, mqtt_get_vl_temp(), mqtt_get_rl_temp(), battV, battPct);

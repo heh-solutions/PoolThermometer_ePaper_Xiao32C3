@@ -29,7 +29,7 @@
 #define KNX_GATEWAY_PORT    3671
 #define KNX_PHYS_ADDR       "1.1.165"
 #define KNX_GA_POOL_TEMP    "10/3/62"
-#define KNX_GA_BATTERY      "10/3/63"
+#define KNX_GA_BATTERY      "12/5/6"
 
 // ---- Deep Sleep ----
 #define DEEP_SLEEP_MINUTES  5

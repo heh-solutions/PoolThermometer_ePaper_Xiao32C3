@@ -35,9 +35,19 @@ Board:      Seeed Studio XIAO ESP32-C3
 Display:    WeAct Studio 1.54" ePaper, 200x200, SPI
 Sensor:     DS18B20 mit 4.7k Pullup nach 3.3V
 
+Batteriemessung (2 Phasen):
+  Phase 1 (aktuell): Spannungsteiler 2x 1MΩ
+    BAT+ → 1MΩ → GPIO7 (ADC) → 1MΩ → GND
+    Dauerverlust: ~2µA (akzeptabel)
+  Phase 2 (später, MOSFET bestellen): P-MOSFET Si2301 (SOT-23)
+    GPIO9 steuert Gate → Teiler nur bei Messung aktiv → 0µA im Deep Sleep
+    BAT+ → Si2301(S) → Si2301(D) → 1MΩ → GPIO7 → 1MΩ → GND
+              ↑ Gate = GPIO9 (HIGH=aus, LOW=ein)
+
 Pin-Belegung:
-  ePaper:  BUSY=GPIO6, RES=GPIO5, DC=GPIO4, CS=GPIO3, SCK=GPIO8, MOSI=GPIO10
-  DS18B20: DATA=GPIO2
+  ePaper:   BUSY=GPIO6, RES=GPIO5, DC=GPIO4, CS=GPIO3, SCK=GPIO8, MOSI=GPIO10
+  DS18B20:  DATA=GPIO2
+  Batterie: ADC=GPIO7, Enable=GPIO9 (Phase 2)
 
 ================================================================================
 3. SOFTWARE-ARCHITEKTUR
@@ -121,12 +131,13 @@ KNX-IP-Gateway:
 Pool-Thermometer auf KNX:
   Phys. Adresse:    1.1.165
   GA Pooltemperatur: 10/3/62  (DPT 9.001)
-  GA Batterie:       10/3/63  (DPT 9.001, Spannung in V)
+  GA Batterie:       12/5/6   (DPT 9.001, Spannung in V)
 
-Library-Optionen:
-  - esp-knx-ip (https://github.com/envy/esp-knx-ip)
-  - Manuelle KNXnet/IP UDP-Pakete
-  → Evaluierung steht noch aus
+Implementierung: Eigener KNXnet/IP Multicast Routing Sender (kein Library-Dependency)
+  - UDP Multicast an 224.0.23.12:3671
+  - KNX-IP-Gateway leitet auf physischen Bus weiter
+  - esp-knx-ip Library evaluiert → zu alt (ESP8266-only, 7 Jahre unmaintained)
+  - Eigene Implementierung: ~120 Zeilen, DPT 9.001 + Routing Indication Frame
 
 Referenz-Projekt: KNX-Sauna-Modul (ProMicro)
   - Nutzt KnxTpUart über UART (Serial1, 19200 Baud, 8E1)

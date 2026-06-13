@@ -14,5 +14,7 @@
 #define DS18B20_PIN   2   // GPIO2 (4.7k Pullup nach 3.3V)
 
 // ---- Batterie ADC ----
-// XIAO ESP32-C3: Batteriespannung über internen Spannungsteiler messbar
-#define BATTERY_ADC_PIN A0
+// Phase 1: Spannungsteiler 2x 1MΩ: BAT+ → 1MΩ → GPIO7 → 1MΩ → GND (~2µA Dauerverlust)
+// Phase 2: P-MOSFET (Si2301) an GPIO9 schaltet Teiler nur bei Messung ein (0µA im Sleep)
+#define BATTERY_ADC_PIN    7   // GPIO7 (ADC)
+#define BATTERY_ENABLE_PIN 9   // GPIO9 (P-MOSFET Gate, Phase 2)
