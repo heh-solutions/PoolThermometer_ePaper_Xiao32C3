@@ -218,12 +218,34 @@ ioBroker Zugriff aus BMW-Netz:
   - PowerShell Invoke-RestMethod funktioniert NICHT (TLS-Problem mit PS 5.1)
 
 Git Credential Helper – CredentialHelperSelector-Popup unterbinden:
-  PROBLEM: Bei jedem Push/Pull erscheint ein GUI-Dialog "Select a credential helper"
-  LÖSUNG:  Einmalig global setzen:
-    git config --global credential.helper manager
-    git config --global credential.helperselector.selected manager
-    git config --global credential.guiprompt false
-  Ergebnis: Git nutzt dauerhaft den Windows Credential Manager, kein Popup mehr.
+  PROBLEM: Bei jedem Push/Pull erscheint ein GUI-Dialog "Select a credential helper".
+  URSACHE: PortableGit System-Config (C:\Program Files\PortableGit\etc\gitconfig)
+           setzt credential.helper=helper-selector. Diese Datei ist schreibgeschützt
+           (Firmenrichtlinie). Global/Lokal-Overrides allein reichen NICHT.
+  LÖSUNG (getestet & funktioniert):
+    1. System-Config komplett ignorieren:
+         [Environment]::SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM","1","User")
+    2. Alle wichtigen System-Settings in die globale Config übernehmen:
+         git config --global core.symlinks false
+         git config --global core.autocrlf true
+         git config --global core.fscache true
+         git config --global color.interactive true
+         git config --global color.ui auto
+         git config --global rebase.autosquash true
+         git config --global filter.lfs.clean "git-lfs clean -- %f"
+         git config --global filter.lfs.smudge "git-lfs smudge -- %f"
+         git config --global filter.lfs.process "git-lfs filter-process"
+         git config --global filter.lfs.required true
+    3. Credential Helper korrekt setzen:
+         git config --global credential.helper manager
+         git config --global credential.helperselector.selected manager
+         git config --global credential.guiprompt false
+         git config --global credential.provider generic
+    4. VS Code neu starten (damit Umgebungsvariable greift)
+  NICHT funktioniert:
+    - Nur global/lokal credential.helper=manager setzen (System-Config gewinnt)
+    - GCM_CREDENTIAL_HELPER / GCM_GUI_PROMPT Umgebungsvariablen (ignoriert von GCM)
+    - credential.guiprompt=false allein (reicht nicht gegen helper-selector)
 
 Verwandte Projekte im gleichen Workspace-Ordner:
   IOBroker_HH/                    – ioBroker Skripte (PoolOled_Push.js, Energiefluss)
@@ -256,4 +278,6 @@ Verwandte Projekte im gleichen Workspace-Ordner:
   - Projekt-Konventionen aus bestehenden Projekten übernommen
   - GitHub-Repo erstellt: heh-solutions/PoolThermometer_ePaper_Xiao32C3
   - Learnings dokumentiert: Proxy, Git Push, GitHub API, ioBroker-Zugriff
+  - CredentialHelperSelector-Popup gefixt (GIT_CONFIG_NOSYSTEM=1)
+  - Anforderungen.txt entfernt (in PROJEKT_BESCHREIBUNG.txt konsolidiert)
   - PROJEKT_BESCHREIBUNG.txt erstellt (diese Datei)
