@@ -1,0 +1,35 @@
+// parameter.h.example
+// Kopiere diese Datei nach parameter.h und passe die Werte an deine Umgebung an.
+// parameter.h darf NIEMALS ins Git-Repository eingecheckt werden!
+//
+// Verwendung:
+//   cp parameter.h.example parameter.h
+
+#pragma once
+
+// ---- Netzwerk ----
+#define WIFI_HOSTNAME       "PoolThermometer"
+
+// ---- MQTT-Broker ----
+#define MQTT_BROKER         "192.168.X.X"
+#define MQTT_PORT           18833
+#define MQTT_CLIENT         "PoolThermometer"
+
+// ---- MQTT-Topics ----
+// Abonnieren (retained, vom ioBroker)
+#define TOPIC_VL_TEMP       "pool/heizung/vorlauf/state"
+#define TOPIC_RL_TEMP       "pool/heizung/ruecklauf/state"
+// Publizieren
+#define TOPIC_POOL_TEMP     "pool/thermometer/pooltemperatur/state"
+#define TOPIC_BATTERY       "pool/thermometer/battery/state"
+#define TOPIC_STATUS        "pool/thermometer/status"
+
+// ---- KNXnet/IP ----
+#define KNX_GATEWAY_IP      "192.168.X.X"
+#define KNX_GATEWAY_PORT    3671
+#define KNX_PHYS_ADDR       "1.1.165"
+#define KNX_GA_POOL_TEMP    "10/3/62"
+#define KNX_GA_BATTERY      "10/3/63"
+
+// ---- Deep Sleep ----
+#define DEEP_SLEEP_MINUTES  5
