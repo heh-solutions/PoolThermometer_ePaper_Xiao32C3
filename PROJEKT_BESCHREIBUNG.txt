@@ -5,6 +5,16 @@ Letzte Aktualisierung: 13.06.2026
 Diese Datei dient als Gesamtkontext für zukünftige Copilot-Chat-Sessions.
 Sie wird bei Projektfortschritt erweitert.
 
+WICHTIG – Automatische Pflege:
+  Copilot soll diese Datei SELBSTÄNDIG und REGELMÄSSIG aktualisieren,
+  wenn im Rahmen des Projektfortschritts relevante Änderungen entstehen:
+  - Neue Erkenntnisse, Learnings oder gelöste Probleme → Abschnitt 7 + 9
+  - Geklärte offene Punkte → Abschnitt 8 abhaken
+  - Neue offene Punkte → Abschnitt 8 ergänzen
+  - Architektur-/Design-Entscheidungen → passenden Abschnitt aktualisieren
+  - Changelog-Eintrag pro Session → Abschnitt 9
+  Das Datum "Letzte Aktualisierung" oben ist stets aktuell zu halten.
+
 ================================================================================
 1. PROJEKTZIEL
 ================================================================================
